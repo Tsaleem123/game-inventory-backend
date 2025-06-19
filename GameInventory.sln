@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36109.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameInventory", "GameInventory\GameInventory.csproj", "{5DBF50BA-E679-4B87-8C2F-15ADEB5AC7C0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5DBF50BA-E679-4B87-8C2F-15ADEB5AC7C0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5DBF50BA-E679-4B87-8C2F-15ADEB5AC7C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5DBF50BA-E679-4B87-8C2F-15ADEB5AC7C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5DBF50BA-E679-4B87-8C2F-15ADEB5AC7C0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {17A9AF8B-D9D5-4C13-B48D-51CDB0866263}
+	EndGlobalSection
+EndGlobal

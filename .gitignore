@@ -1,0 +1,18 @@
+# Ignore Visual Studio folders
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.dbmdl
+*.log
+
+# Ignore build artifacts
+*.dll
+*.exe
+*.pdb
+
+# Ignore user settings and other clutter
+*.DS_Store
+*.vscode/
+*.env
