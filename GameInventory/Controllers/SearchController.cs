@@ -1,58 +1,98 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using System.Net.Http.Headers;
+using System.Text.RegularExpressions;
 
 [ApiController]
-[Route("api/[controller]")] // Resolves to: /api/search
+[Route("api/[controller]")]
 public class SearchController : ControllerBase
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly string _apiKey;
+    private readonly IMemoryCache _cache;
+    private readonly string _giantBombApiKey;
 
-    public SearchController(IHttpClientFactory httpClientFactory, IConfiguration configuration)
+    public SearchController(IHttpClientFactory httpClientFactory, IConfiguration configuration, IMemoryCache cache)
     {
         _httpClientFactory = httpClientFactory;
-        _apiKey = configuration["GiantBomb:ApiKey"];
+        _cache = cache;
+        _giantBombApiKey = configuration["GiantBomb:ApiKey"];
+
+        if (string.IsNullOrWhiteSpace(_giantBombApiKey))
+        {
+            throw new InvalidOperationException("GiantBomb API key is missing from configuration.");
+        }
     }
 
-    // Example: GET /api/search?query=elden&page=2&pageSize=10
     [HttpGet]
     public async Task<IActionResult> Get(
         [FromQuery] string query,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10)
     {
-        // 1. Validate input
-        if (string.IsNullOrWhiteSpace(query))
-            return BadRequest("Query is required.");
+        try
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return BadRequest("Query is required.");
 
-        // 2. Create HTTP client and set headers
-        var client = _httpClientFactory.CreateClient();
-        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("GameSenseiApp", "1.0"));
+            var normalizedQuery = NormalizeQuery(query);
+            var cacheKey = $"search:{normalizedQuery}:{page}:{pageSize}";
 
-        // 3. Build Giant Bomb search URL
-        string searchUrl = BuildSearchUrl(query, page, pageSize);
+            if (_cache.TryGetValue(cacheKey, out string cachedResult))
+            {
+                return Content(cachedResult, "application/json");
+            }
 
-        // 4. Send request to Giant Bomb API
-        var response = await client.GetAsync(searchUrl);
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("GameInventoryApp", "1.0"));
 
-        if (!response.IsSuccessStatusCode)
-            return StatusCode((int)response.StatusCode, "Giant Bomb API error");
+            var url = BuildSearchUrl(normalizedQuery, page, pageSize);
+            var response = await client.GetAsync(url);
+            var responseContent = await response.Content.ReadAsStringAsync();
 
-        // 5. Return raw JSON content to frontend
-        var json = await response.Content.ReadAsStringAsync();
-        return Content(json, "application/json");
+            if (!response.IsSuccessStatusCode)
+            {
+                return StatusCode((int)response.StatusCode, new
+                {
+                    error = "Giant Bomb API error",
+                    status = response.StatusCode,
+                    body = responseContent
+                });
+            }
+
+            _cache.Set(cacheKey, responseContent, TimeSpan.FromSeconds(10));
+            return Content(responseContent, "application/json");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                error = "Internal Server Error",
+                message = ex.Message,
+                stack = ex.StackTrace
+            });
+        }
     }
 
-    // Builds the search URL with encoded query and pagination
-    private string BuildSearchUrl(string query, int page, int limit)
+    private string BuildSearchUrl(string normalizedQuery, int page, int limit)
     {
-        var encodedQuery = Uri.EscapeDataString(query);
-        return $"https://www.giantbomb.com/api/search/" +
-               $"?api_key={_apiKey}" +
+        var encodedQuery = Uri.EscapeDataString(normalizedQuery);
+        return $"https://www.giantbomb.com/api/search/?" +
+               $"api_key={_giantBombApiKey}" +
                $"&format=json" +
                $"&resources=game" +
                $"&query={encodedQuery}" +
                $"&limit={limit}" +
                $"&page={page}";
+    }
+
+    private string NormalizeQuery(string query)
+    {
+        var trimmed = query.Trim().ToLowerInvariant();
+
+        // Strip anything except word characters, spaces, hyphens, colons
+        string safe = Regex.Replace(trimmed, @"[^\w\s\-:]", "", RegexOptions.Compiled);
+
+        // Collapse multiple spaces to one
+        return Regex.Replace(safe, @"\s+", " ");
     }
 }
