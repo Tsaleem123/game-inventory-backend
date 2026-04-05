@@ -1,4 +1,4 @@
-@GameInventory_HostAddress = http://localhost:5202
+@GameInventory_HostAddress = https://gameinventory-two.vercel.app
 
 GET {{GameInventory_HostAddress}}/weatherforecast/
 Accept: application/json
