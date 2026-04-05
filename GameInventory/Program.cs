@@ -6,173 +6,209 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-//Loads Enviroment variables.
-DotNetEnv.Env.Load();
-// Create the web application builder with default configuration
-var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls(Environment.GetEnvironmentVariable("ASPNETCORE_URLS"));
-// ===== DATABASE CONFIGURATION =====
-// Configure Entity Framework DbContext with SQL Server
-// Retrieves connection string from appsettings.json or environment variables
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-// Add in-memory caching for improved performance (used by SearchController for API response caching)
-builder.Services.AddMemoryCache();
-
-// ===== IDENTITY CONFIGURATION =====
-// Configure ASP.NET Core Identity for user management and authentication
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+try
 {
-    // Password requirements for user security
-    options.Password.RequireDigit = true;           // Must contain at least one digit
-    options.Password.RequiredLength = 6;            // Minimum password length
+    //Loads Environment variables.
+    DotNetEnv.Env.Load();
 
-    // User account requirements
-    options.User.RequireUniqueEmail = true;         // Prevent duplicate email addresses
+    // Create the web application builder with default configuration
+    var builder = WebApplication.CreateBuilder(args);
 
-    // Sign-in requirements
-    options.SignIn.RequireConfirmedEmail = true;    // Users must verify email before signing in
-})
-.AddEntityFrameworkStores<AppDbContext>()           // Use Entity Framework for Identity data storage
-.AddDefaultTokenProviders();                        // Enable default token providers for email confirmation, password reset, etc.
+    // Enhanced logging for debugging
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConsole();
+    builder.Logging.AddDebug();
 
-// ===== JWT AUTHENTICATION CONFIGURATION =====
-// Configure JWT (JSON Web Token) authentication for API security
-var jwt = builder.Configuration.GetSection("JwtSettings");
-var key = Encoding.UTF8.GetBytes(jwt["Secret"]!);   // Convert JWT secret to byte array for signing
+    // Capture startup errors
+    builder.WebHost.CaptureStartupErrors(true);
+    builder.WebHost.UseSetting("detailedErrors", "true");
 
-builder.Services.AddAuthentication(options =>
-{
-    // Set JWT Bearer as the default authentication scheme
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(options =>
-{
-    // SECURITY NOTE: Set to true in production for HTTPS requirement
-    options.RequireHttpsMetadata = false;          // Allow HTTP in development
-    options.SaveToken = true;                      // Save JWT token in AuthenticationProperties
-
-    // Configure token validation parameters for security
-    options.TokenValidationParameters = new TokenValidationParameters
+/*    // Set URLs if environment variable exists
+    var urls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+    if (!string.IsNullOrEmpty(urls))
     {
-        // Validate the signing key to ensure token integrity
-        ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(key),
+        builder.WebHost.UseUrls(urls);
+    }*/
 
-        // Validate issuer (who created the token)
-        ValidateIssuer = true,
-        ValidIssuer = jwt["Issuer"],
-
-        // Validate audience (who the token is intended for)
-        ValidateAudience = true,
-        ValidAudience = jwt["Audience"],
-
-        // Validate token expiration time
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.Zero                  // No tolerance for clock differences
-    };
-});
-
-// ===== EMAIL AND HTTP CLIENT CONFIGURATION =====
-// Configure email settings from appsettings.json for user notifications
-builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
-
-// Add HTTP client factory for making external API calls (used by SearchController for Giant Bomb API)
-builder.Services.AddHttpClient();
-
-// ===== CORS CONFIGURATION =====
-// Configure Cross-Origin Resource Sharing to allow frontend access
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("CorsPolicy", policy =>
-        policy.WithOrigins("http://localhost:5173")     // Allow Front End
-              .AllowAnyHeader()                         // Allow all headers
-              .AllowAnyMethod());                       // Allow all HTTP methods
-});
-
-// ===== API DOCUMENTATION CONFIGURATION =====
-// Add controllers for API endpoints
-builder.Services.AddControllers();
-
-// Add API exploration services for Swagger documentation
-builder.Services.AddEndpointsApiExplorer();
-
-// Configure Swagger/OpenAPI with JWT authentication support
-builder.Services.AddSwaggerGen(options =>
-{
-    // Basic API information
-    options.SwaggerDoc("v1", new OpenApiInfo { Title = "GameInventory", Version = "v1" });
-
-    // Configure JWT Bearer authentication in Swagger UI
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    // ===== DATABASE CONFIGURATION =====
+    // Configure Entity Framework DbContext with SQL Server
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (string.IsNullOrEmpty(connectionString))
     {
-        Name = "Authorization",                         // Header name
-        Type = SecuritySchemeType.ApiKey,              // Security scheme type
-        Scheme = "Bearer",                             // Authentication scheme
-        BearerFormat = "JWT",                          // Token format
-        In = ParameterLocation.Header,                 // Where to send the token
-        Description = "Enter 'Bearer' [space] and then your valid JWT token.\n\nExample: Bearer eyJhbGciOiJIUzI1NiIs..."
-    });
+        throw new InvalidOperationException("DefaultConnection string is missing from configuration.");
+    }
 
-    // Apply JWT authentication requirement to all endpoints that need it
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseSqlServer(connectionString));
+
+    // Add in-memory caching for improved performance
+    builder.Services.AddMemoryCache();
+
+    // ===== IDENTITY CONFIGURATION =====
+    builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     {
+        // Password requirements for user security
+        options.Password.RequireDigit = true;
+        options.Password.RequiredLength = 6;
+        options.User.RequireUniqueEmail = true;
+        options.SignIn.RequireConfirmedEmail = true;
+    })
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddDefaultTokenProviders();
+
+    // ===== JWT AUTHENTICATION CONFIGURATION =====
+    var jwtSection = builder.Configuration.GetSection("JwtSettings");
+    var jwtSecret = jwtSection["Secret"];
+    var jwtIssuer = jwtSection["Issuer"];
+    var jwtAudience = jwtSection["Audience"];
+
+    // Validate JWT configuration
+    if (string.IsNullOrEmpty(jwtSecret))
+    {
+        throw new InvalidOperationException("JWT Secret is missing from configuration.");
+    }
+    if (string.IsNullOrEmpty(jwtIssuer))
+    {
+        throw new InvalidOperationException("JWT Issuer is missing from configuration.");
+    }
+    if (string.IsNullOrEmpty(jwtAudience))
+    {
+        throw new InvalidOperationException("JWT Audience is missing from configuration.");
+    }
+
+    var key = Encoding.UTF8.GetBytes(jwtSecret);
+
+    builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.RequireHttpsMetadata = true;
+        options.SaveToken = true;
+
+        options.TokenValidationParameters = new TokenValidationParameters
         {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"                       // Reference to the security definition above
-                }
-            },
-            Array.Empty<string>()                       // No specific scopes required
-        }
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(key),
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtAudience,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
     });
-});
 
-// ===== DEPENDENCY INJECTION CONFIGURATION =====
-// Register application services for dependency injection
-builder.Services.AddScoped<IEmailService, EmailService>();     // Email service for user notifications
-builder.Services.AddScoped<ITokenService, TokenService>();     // JWT token generation and validation service
+    // ===== EMAIL AND HTTP CLIENT CONFIGURATION =====
+    builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+    builder.Services.AddHttpClient();
 
-// ===== APPLICATION PIPELINE CONFIGURATION =====
-// Build the application with all configured services
-var app = builder.Build();
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("CorsPolicy", policy =>
+            policy.WithOrigins(
+                "https://gameinventory-two.vercel.app",
+                "http://localhost:3000",
+                "http://localhost:5173"
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod());
+    });
 
-// ===== DEVELOPMENT ENVIRONMENT CONFIGURATION =====
-// Configure middleware pipeline for development environment
-if (app.Environment.IsDevelopment())
-{
-    // Show detailed error pages during development
-    app.UseDeveloperExceptionPage();
+    // ===== API DOCUMENTATION CONFIGURATION =====
+    builder.Services.AddControllers();
+    builder.Services.AddEndpointsApiExplorer();
 
-    // Enable Swagger API documentation
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    builder.Services.AddSwaggerGen(options =>
+    {
+        options.SwaggerDoc("v1", new OpenApiInfo { Title = "GameInventory", Version = "v1" });
+
+        options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+        {
+            Name = "Authorization",
+            Type = SecuritySchemeType.ApiKey,
+            Scheme = "Bearer",
+            BearerFormat = "JWT",
+            In = ParameterLocation.Header,
+            Description = "Enter 'Bearer' [space] and then your valid JWT token.\n\nExample: Bearer eyJhbGciOiJIUzI1NiIs..."
+        });
+
+        options.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
+            {
+                new OpenApiSecurityScheme
+                {
+                    Reference = new OpenApiReference
+                    {
+                        Type = ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
+    });
+
+    // ===== DEPENDENCY INJECTION CONFIGURATION =====
+    builder.Services.AddScoped<IEmailService, EmailService>();
+    builder.Services.AddScoped<ITokenService, TokenService>();
+
+    // ===== APPLICATION PIPELINE CONFIGURATION =====
+    var app = builder.Build();
+
+    // Database migration with error handling
+    using (var scope = app.Services.CreateScope())
+    {
+        try
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            if (dbContext.Database.IsRelational())
+            {
+                dbContext.Database.Migrate();
+            }
+        }
+        catch (Exception ex)
+        {
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            logger.LogError(ex, "An error occurred while migrating the database.");
+            throw; // Re-throw to prevent app from starting with DB issues
+        }
+    }
+
+    // ===== DEVELOPMENT ENVIRONMENT CONFIGURATION =====
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseDeveloperExceptionPage();
+        app.UseSwagger();
+        app.UseSwaggerUI();
+    }
+    else
+    {
+        // Temporarily use developer exception page in production to see the error
+        app.UseDeveloperExceptionPage(); // TEMPORARY - remove after debugging
+    }
+
+    // ===== MIDDLEWARE PIPELINE =====
+    app.UseHttpsRedirection();
+    app.UseCors("CorsPolicy");
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.MapControllers();
+
+    // ===== APPLICATION STARTUP =====
+    app.Run();
 }
+catch (Exception ex)
+{
+    // Log startup errors
+    Console.WriteLine($"Application failed to start: {ex.Message}");
+    Console.WriteLine($"Stack trace: {ex.StackTrace}");
 
-// ===== MIDDLEWARE PIPELINE =====
-// Configure the HTTP request pipeline (order matters!)
+    // If you have access to logging here, use it
+    // logger.LogCritical(ex, "Application failed to start");
 
-// 1. Redirect HTTP requests to HTTPS for security
-app.UseHttpsRedirection();
-
-// 2. Enable CORS to allow frontend access
-app.UseCors("CorsPolicy");
-
-// 3. Enable authentication (must come before authorization)
-app.UseAuthentication();
-
-// 4. Enable authorization (protects endpoints marked with [Authorize])
-app.UseAuthorization();
-
-// 5. Map controller endpoints to handle API requests
-app.MapControllers();
-
-// ===== APPLICATION STARTUP =====
-// Start the web application and begin listening for requests
-app.Run();
+    throw; // Re-throw to ensure the application doesn't start in a broken state
+}

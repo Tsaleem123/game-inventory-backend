@@ -1,8 +1,15 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using System.Net.Http.Headers;
+using System.Net.Http.Headers;
+using System.Text.Json;
 using System.Text.RegularExpressions;
-
+public class TwitchTokenResponse
+{
+    public string access_token { get; set; }
+    public int expires_in { get; set; }
+    public string token_type { get; set; }
+}
 /// <summary>
 /// API Controller for searching and retrieving game information from the Giant Bomb API.
 /// Provides endpoints for searching games by query and retrieving specific games by ID.
@@ -15,7 +22,8 @@ public class SearchController : ControllerBase
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMemoryCache _cache;
     private readonly string _giantBombApiKey;
-
+    private readonly string _IGDB_Client;
+    private readonly string _IGDB_Secret;
     /// <summary>
     /// Initializes a new instance of the SearchController.
     /// </summary>
@@ -28,12 +36,14 @@ public class SearchController : ControllerBase
         _httpClientFactory = httpClientFactory;
         _cache = cache;
         _giantBombApiKey = configuration["GiantBomb:ApiKey"];
+        _IGDB_Client = configuration["IGDB_Client"];
+        _IGDB_Secret = configuration["IGDB_Secret"];
 
-        // Validate that the API key is configured properly
-        if (string.IsNullOrWhiteSpace(_giantBombApiKey))
-        {
-            throw new InvalidOperationException("GiantBomb API key is missing from configuration.");
-        }
+        //// Validate that the API key is configured properly
+        //if (string.IsNullOrWhiteSpace(_giantBombApiKey))
+        //{
+        //    throw new InvalidOperationException("GiantBomb API key is missing from configuration.");
+        //}
     }
 
     /// <summary>
@@ -56,6 +66,7 @@ public class SearchController : ControllerBase
     {
         try
         {
+
             // Validate required query parameter
             if (string.IsNullOrWhiteSpace(query))
                 return BadRequest("Query is required.");
@@ -71,16 +82,26 @@ public class SearchController : ControllerBase
             {
                 return Content(cachedResult, "application/json");
             }
+            var authClient = _httpClientFactory.CreateClient();
+            var authUrl = $"https://id.twitch.tv/oauth2/token?client_id={_IGDB_Client}&client_secret={_IGDB_Secret}&grant_type=client_credentials";
+            var res = await authClient.PostAsync(authUrl, null);
+            res.EnsureSuccessStatusCode();
 
+            var json = await res.Content.ReadAsStringAsync();
+            var tokenResponse = JsonSerializer.Deserialize<TwitchTokenResponse>(json);
             // Create HTTP client with proper user agent for API identification
             var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenResponse.access_token);
             client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("GameInventoryApp", "1.0"));
+            client.DefaultRequestHeaders.Add("Client-ID", _IGDB_Client);
 
+            var content = new StringContent("fields name; limit 10;");
             // Build the Giant Bomb API URL with all necessary parameters
-            var url = BuildSearchUrl(normalizedQuery, page, pageSize);
+            var url = "https://api.igdb.com/v4/games/";
 
             // Make the API request
-            var response = await client.GetAsync(url);
+
+            var response = await client.PostAsync(url,content);
             var responseContent = await response.Content.ReadAsStringAsync();
 
             // Handle API errors by returning the same status code
@@ -88,7 +109,7 @@ public class SearchController : ControllerBase
             {
                 return StatusCode((int)response.StatusCode, new
                 {
-                    error = "Giant Bomb API error",
+                    error = "IGDB API error",
                     status = response.StatusCode,
                     body = responseContent
                 });
@@ -175,13 +196,7 @@ public class SearchController : ControllerBase
         var encodedQuery = Uri.EscapeDataString(normalizedQuery);
 
         // Build the complete API URL with all required parameters
-        return $"https://www.giantbomb.com/api/search/?" +
-               $"api_key={_giantBombApiKey}" +      // Authentication
-               $"&format=json" +                    // Response format
-               $"&resources=game" +                 // Limit search to games only
-               $"&query={encodedQuery}" +           // Search query
-               $"&limit={limit}" +                  // Results per page
-               $"&page={page}";                     // Page number
+        return $"https://api.igdb.com/v4/games/";
     }
 
     /// <summary>
