@@ -89,7 +89,7 @@ public class SearchController : ControllerBase
             var offset = (page - 1) * pageSize;
  
             // Request the page of results
-            var gamesBody = $"search \"{query}\"; fields name,cover.url,summary; limit {pageSize}; offset {offset};";
+            var gamesBody = $"search \"{query}\"; fields name, cover.url, summary, rating, rating_count, aggregated_rating, aggregated_rating_count, screenshots.url, genres.name, platforms.name, first_release_date, involved_companies.company.name; limit {pageSize}; offset {offset};";
             var gamesResponse = await client.PostAsync(
                 "https://api.igdb.com/v4/games/",
                 new StringContent(gamesBody)

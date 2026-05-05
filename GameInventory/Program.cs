@@ -24,12 +24,12 @@ try
     builder.WebHost.CaptureStartupErrors(true);
     builder.WebHost.UseSetting("detailedErrors", "true");
 
-/*    // Set URLs if environment variable exists
+ // Set URLs if environment variable exists
     var urls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
     if (!string.IsNullOrEmpty(urls))
     {
         builder.WebHost.UseUrls(urls);
-    }*/
+    }
 
     // ===== DATABASE CONFIGURATION =====
     // Configure Entity Framework DbContext with SQL Server
