@@ -140,6 +140,46 @@ public class SearchController : ControllerBase
             });
         }
     }
+    
+    [HttpGet("by-id/{id:int}")]
+    public async Task<IActionResult> GetById(int id)
+    {
+        try
+        {
+            var cacheKey = $"game:{id}";
+            if (_cache.TryGetValue(cacheKey, out string cached))
+                return Content(cached, "application/json");
+
+            var authClient = _httpClientFactory.CreateClient();
+            var authUrl = $"https://id.twitch.tv/oauth2/token?client_id={_IGDB_Client}&client_secret={_IGDB_Secret}&grant_type=client_credentials";
+            var authRes = await authClient.PostAsync(authUrl, null);
+            authRes.EnsureSuccessStatusCode();
+            var tokenResponse = JsonSerializer.Deserialize<TwitchTokenResponse>(await authRes.Content.ReadAsStringAsync());
+
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenResponse.access_token);
+            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("GameInventoryApp", "1.0"));
+            client.DefaultRequestHeaders.Add("Client-ID", _IGDB_Client);
+
+            var body = $"fields name, cover.url, summary, rating, first_release_date, genres.name, platforms.name; where id = {id}; limit 1;";
+            var resp = await client.PostAsync("https://api.igdb.com/v4/games/", new StringContent(body));
+
+            if (!resp.IsSuccessStatusCode)
+                return StatusCode((int)resp.StatusCode, await resp.Content.ReadAsStringAsync());
+
+            var json = await resp.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.GetArrayLength() == 0) return NotFound();
+
+            var single = doc.RootElement[0].GetRawText();
+            _cache.Set(cacheKey, single, TimeSpan.FromMinutes(10));
+            return Content(single, "application/json");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
  
     /// <summary>
     /// Normalizes the search query by removing special characters and standardizing format.
