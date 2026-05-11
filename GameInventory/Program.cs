@@ -110,7 +110,7 @@ try
     {
         options.AddPolicy("CorsPolicy", policy =>
             policy.WithOrigins(
-                "https://gameinventory-two.vercel.app",
+                "https://gameinventory-app.vercel.app",
                 "http://localhost:3000",
                 "http://localhost:5173"
             )
