@@ -181,7 +181,3 @@ The project includes a Web Deploy publish profile under `Properties/PublishProfi
 3. The app auto-runs EF migrations on startup
 
 ---
-
-## License
-
-MIT
