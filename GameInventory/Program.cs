@@ -106,14 +106,19 @@ try
     builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
     builder.Services.AddHttpClient();
 
+    var corsOrigins = Environment.GetEnvironmentVariable("CORS_ORIGINS")
+        ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        ?? Array.Empty<string>();
+
+    if (corsOrigins.Length == 0)
+    {
+        throw new InvalidOperationException("CORS_ORIGINS is missing or empty in configuration.");
+    }
+
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("CorsPolicy", policy =>
-            policy.WithOrigins(
-                "https://gameinventory-app.vercel.app",
-                "http://localhost:3000",
-                "http://localhost:5173"
-            )
+            policy.WithOrigins(corsOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod());
     });
