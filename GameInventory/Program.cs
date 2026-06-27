@@ -106,6 +106,14 @@ try
     builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
     builder.Services.AddHttpClient();
 
+    // Shared, app-wide throttle for IGDB so we never exceed its ~4 req/sec limit
+    // and risk an IP block. All IGDB calls go through the named "igdb" client,
+    // whose handler paces requests via the singleton limiter.
+    builder.Services.AddSingleton<GameInventory.Services.IgdbRateLimiter>();
+    builder.Services.AddTransient<GameInventory.Services.IgdbRateLimitingHandler>();
+    builder.Services.AddHttpClient("igdb")
+        .AddHttpMessageHandler<GameInventory.Services.IgdbRateLimitingHandler>();
+
     var corsOrigins = Environment.GetEnvironmentVariable("CORS_ORIGINS")
         ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         ?? Array.Empty<string>();

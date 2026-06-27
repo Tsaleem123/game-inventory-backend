@@ -85,8 +85,8 @@ public class SearchController : ControllerBase
             var tokenJson = await authRes.Content.ReadAsStringAsync();
             var tokenResponse = JsonSerializer.Deserialize<TwitchTokenResponse>(tokenJson);
 
-            // Build an authenticated IGDB client
-            var client = _httpClientFactory.CreateClient();
+            // Build an authenticated IGDB client (named "igdb" → rate-limited)
+            var client = _httpClientFactory.CreateClient("igdb");
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenResponse.access_token);
             client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("GameInventoryApp", "1.0"));
             client.DefaultRequestHeaders.Add("Client-ID", _IGDB_Client);
@@ -244,7 +244,8 @@ public class SearchController : ControllerBase
             authRes.EnsureSuccessStatusCode();
             var tokenResponse = JsonSerializer.Deserialize<TwitchTokenResponse>(await authRes.Content.ReadAsStringAsync());
 
-            var client = _httpClientFactory.CreateClient();
+            // Named "igdb" client → routed through the shared rate limiter.
+            var client = _httpClientFactory.CreateClient("igdb");
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenResponse.access_token);
             client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("GameInventoryApp", "1.0"));
             client.DefaultRequestHeaders.Add("Client-ID", _IGDB_Client);
