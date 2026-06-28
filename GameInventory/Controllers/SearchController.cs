@@ -144,10 +144,13 @@ public class SearchController : ControllerBase
 
                 // Resolve genre / theme / keyword IDs and run a name search — all in parallel.
                 // Genres and themes are matched case-insensitively with the contains wildcard.
-                var genreTask   = client.PostAsync("https://api.igdb.com/v4/genres/",
-                    new StringContent($"fields id; where name ~ *\"{term}\"*; limit 5;"));
-                var themeTask   = client.PostAsync("https://api.igdb.com/v4/themes/",
-                    new StringContent($"fields id; where name ~ *\"{term}\"*; limit 5;"));
+                var genreTask = client.PostAsync(
+                    "https://api.igdb.com/v4/genres/",
+                    new StringContent($"search \"{term}\"; fields id; limit 5;"));
+
+                var themeTask = client.PostAsync(
+                    "https://api.igdb.com/v4/themes/",
+                    new StringContent($"search \"{term}\"; fields id; limit 5;"));
                 var keywordTask = client.PostAsync("https://api.igdb.com/v4/keywords/",
                     new StringContent($"search \"{term}\"; fields id; limit 20;"));
                 var nameTask    = client.PostAsync("https://api.igdb.com/v4/games/",
