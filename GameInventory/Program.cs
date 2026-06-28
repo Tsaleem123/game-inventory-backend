@@ -1,6 +1,7 @@
 ﻿using GameInventory;
 using GameInventory.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -9,8 +10,14 @@ using System.Text;
 
 try
 {
-    //Loads Environment variables.
-    DotNetEnv.Env.Load();
+    // Load the local .env file ONLY in development. In production (Azure App
+    // Service), configuration comes from Application Settings / environment
+    // variables, so we must NOT let a stray .env override them.
+    var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+    if (string.Equals(hostEnv, "Development", StringComparison.OrdinalIgnoreCase))
+    {
+        DotNetEnv.Env.Load();
+    }
 
     // Create the web application builder with default configuration
     var builder = WebApplication.CreateBuilder(args);
@@ -205,6 +212,18 @@ try
     }
 
     // ===== MIDDLEWARE PIPELINE =====
+    // App Service terminates TLS at the front end and forwards plain HTTP to the
+    // container on port 8080. Honor the proxy's X-Forwarded-Proto/-For headers so
+    // Request.IsHttps is correct and UseHttpsRedirection doesn't bounce API calls.
+    var forwardedOptions = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor
+    };
+    // Trust the App Service reverse proxy (network list is unknown at build time).
+    forwardedOptions.KnownNetworks.Clear();
+    forwardedOptions.KnownProxies.Clear();
+    app.UseForwardedHeaders(forwardedOptions);
+
     app.UseCors("CorsPolicy");
     app.UseHttpsRedirection();
     app.UseAuthentication();
