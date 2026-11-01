@@ -64,6 +64,15 @@ try
     .AddEntityFrameworkStores<AppDbContext>()
     .AddDefaultTokenProviders();
 
+    // How long password-reset links stay valid (Identity's default is 1 day).
+    // Configurable via the "PasswordResetTokenMinutes" setting; defaults to 30.
+    // Note: this lifespan applies to all of Identity's default data-protection
+    // tokens. The only other one this app uses is the email-confirmation token,
+    // which is generated and consumed in the same request, so it's unaffected.
+    var resetTokenMinutes = builder.Configuration.GetValue("PasswordResetTokenMinutes", 30);
+    builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
+        options.TokenLifespan = TimeSpan.FromMinutes(resetTokenMinutes));
+
     // ===== JWT AUTHENTICATION CONFIGURATION =====
     var jwtSection = builder.Configuration.GetSection("JwtSettings");
     var jwtSecret = jwtSection["Secret"];
@@ -107,6 +116,32 @@ try
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
+
+        // Return a small JSON body with every 401 so the frontend (and anyone
+        // looking at the browser's Network tab) can tell an expired session
+        // apart from a missing or invalid token.
+        options.Events = new JwtBearerEvents
+        {
+            OnChallenge = async context =>
+            {
+                context.HandleResponse(); // replace the default empty 401
+
+                var expired = context.AuthenticateFailure is SecurityTokenExpiredException;
+                var hasToken = !string.IsNullOrEmpty(context.Request.Headers.Authorization);
+
+                var (code, message) = expired
+                    ? ("token_expired", "Your session has expired. Please log in again.")
+                    : hasToken
+                        ? ("invalid_token", "Your login token is invalid. Please log in again.")
+                        : ("missing_token", "You need to be logged in to do that.");
+
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.Headers.WWWAuthenticate = expired
+                    ? "Bearer error=\"invalid_token\", error_description=\"The token has expired\""
+                    : hasToken ? "Bearer error=\"invalid_token\"" : "Bearer";
+                await context.Response.WriteAsJsonAsync(new { code, message });
+            }
+        };
     });
 
     // ===== EMAIL AND HTTP CLIENT CONFIGURATION =====
@@ -137,6 +172,9 @@ try
             .AllowAnyHeader()
             .AllowAnyMethod());
     });
+
+    // Standard JSON error responses (used by the production exception handler below)
+    builder.Services.AddProblemDetails();
 
     // ===== API DOCUMENTATION CONFIGURATION =====
     builder.Services.AddControllers();
@@ -207,8 +245,10 @@ try
     }
     else
     {
-        // Temporarily use developer exception page in production to see the error
-        app.UseDeveloperExceptionPage(); // TEMPORARY - remove after debugging
+        // Production: return a generic 500 ProblemDetails response instead of the
+        // developer exception page, which would expose stack traces and internal
+        // details to anyone. The exception is still logged (see App Service logs).
+        app.UseExceptionHandler();
     }
 
     // ===== MIDDLEWARE PIPELINE =====

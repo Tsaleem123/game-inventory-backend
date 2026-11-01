@@ -231,12 +231,29 @@ namespace GameInventory.Controllers
         /// <param name="email">User's email address</param>
         /// <returns>Redirect to frontend reset password page</returns>
         [HttpGet("reset-password")]
-        public IActionResult ResetPasswordRedirect(string token, string email)
+        public async Task<IActionResult> ResetPasswordRedirect(string token, string email)
         {
             // Frontend base URL comes from configuration so each environment
             // (Development, Production, etc.) supplies its own value.
             // Falls back to the local dev URL if nothing is configured.
             var frontendBase = (_config["FrontendBaseUrl"] ?? "http://localhost:5173").TrimEnd('/');
+
+            // Check the link before showing the reset form, so an expired or
+            // already-used link gets a clear message instead of a form that can
+            // only fail on submit. The token arrives still URL-encoded once (it was
+            // encoded when the email was built), matching what ResetPassword decodes.
+            var user = string.IsNullOrWhiteSpace(email) ? null : await _userManager.FindByEmailAsync(email);
+            var rawToken = WebUtility.UrlDecode(token ?? string.Empty);
+            var isValid = user != null
+                && !string.IsNullOrEmpty(rawToken)
+                && await _userManager.VerifyUserTokenAsync(
+                    user,
+                    _userManager.Options.Tokens.PasswordResetTokenProvider,
+                    UserManager<ApplicationUser>.ResetPasswordTokenPurpose,
+                    rawToken);
+
+            if (!isValid)
+                return Redirect($"{frontendBase}/reset-password?expired=1");
 
             // Construct frontend URL with encoded parameters
             var url = $"{frontendBase}/reset-password?token={WebUtility.UrlEncode(token)}&email={WebUtility.UrlEncode(email)}";
@@ -267,7 +284,15 @@ namespace GameInventory.Controllers
             var result = await _userManager.ResetPasswordAsync(user, decodedToken, model.NewPassword);
 
             if (!result.Succeeded)
-                return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+            {
+                // Expired, already-used or tampered link
+                if (result.Errors.Any(e => e.Code == nameof(IdentityErrorDescriber.InvalidToken)))
+                    return BadRequest(new { message = "This reset link has expired or has already been used. Please request a new one." });
+
+                // Anything else is usually a password rule (e.g. needs a digit)
+                var errors = result.Errors.Select(e => e.Description).ToList();
+                return BadRequest(new { message = string.Join(" ", errors), errors });
+            }
 
             return Ok(new { message = "Password has been reset successfully." });
         }
