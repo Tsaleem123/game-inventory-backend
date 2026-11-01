@@ -222,19 +222,21 @@ EmailSettings__SmtpServer=smtp.gmail.com
 IGDB_Client=your-twitch-client-id
 IGDB_Secret=your-twitch-client-secret
 
-# --- Local server ---
-ASPNETCORE_ENVIRONMENT=Development
+# --- Local server port ---
 ASPNETCORE_URLS=http://localhost:5202
 
 # --- Which websites may call the API (comma-separated, no spaces) ---
 CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+
+# --- Where password-reset links send people (optional, this is the default) ---
+FrontendBaseUrl=http://localhost:5173
 ```
 
 Notes:
 - The double underscore (`__`) is intentional. It's how .NET maps `.env` values onto the sections in `appsettings.json`. For example, `JwtSettings__Secret` fills in `JwtSettings:Secret`.
 - **Keep the connection string in single quotes**, especially on Windows, so characters like `\` and `;` are read exactly as written.
-- `ASPNETCORE_ENVIRONMENT=Development` turns on the Swagger page and detailed error messages.
-- `CORS_ORIGINS` must include the address the frontend runs on (`http://localhost:5173` by default). Some branches read this variable and refuse to start without it. Older ones use a built-in list and ignore it, so it's safe to always set it.
+- `CORS_ORIGINS` is **required**, and the API won't start without it. It must include the address the frontend runs on (`http://localhost:5173` by default).
+- **Don't put `ASPNETCORE_ENVIRONMENT` in this file.** The API only reads `.env` when it's *already* running in Development mode, so that setting has to come from your terminal. Step 7 shows how.
 
 ---
 
@@ -242,13 +244,24 @@ Notes:
 
 From the **`GameInventory` folder** (the one containing `.env`):
 
-**macOS / Windows:**
+**macOS (Terminal):**
 ```bash
 dotnet restore
+ASPNETCORE_ENVIRONMENT=Development dotnet run --no-launch-profile
+```
+
+**Windows (PowerShell):**
+```powershell
+dotnet restore
+$env:ASPNETCORE_ENVIRONMENT = "Development"
 dotnet run --no-launch-profile
 ```
 
-`--no-launch-profile` skips `Properties/launchSettings.json`, so everything comes from your `.env`. Plain `dotnet run` also works, because values in `.env` take priority.
+Why both parts matter:
+- **`ASPNETCORE_ENVIRONMENT=Development`** tells the API it's running locally. Only then does it load your `.env` file. It also turns on the Swagger page and detailed error messages. In production (Azure) the API deliberately ignores `.env` and uses the App Service settings instead.
+- **`--no-launch-profile`** skips `Properties/launchSettings.json`, which would otherwise force `Production` mode, and then `.env` wouldn't load.
+
+On Windows, `$env:` only lasts for that PowerShell window, so run that line again whenever you open a new one.
 
 The first start takes a little longer while it creates the database. When you see a line like
 
@@ -262,7 +275,13 @@ it's ready. Leave this window open. Press **Ctrl + C** to stop the API.
 
 ### Running from Visual Studio (Windows) or Rider/VS Code
 
-Open `GameInventory.sln` and press **Run**. Make sure `.env` is in the `GameInventory` project folder. The included launch profile sets `ASPNETCORE_ENVIRONMENT=Production`, but the value in your `.env` overrides it, so you'll still get Development mode and Swagger.
+Open `GameInventory.sln`. Make sure `.env` is in the `GameInventory` project folder. The included launch profile runs in **Production** mode, which skips `.env`, so the API fails with "DefaultConnection string is missing". Before pressing **Run**, change the environment to Development:
+
+- **Visual Studio:** *Debug → GameInventory Debug Properties*, and set `ASPNETCORE_ENVIRONMENT` to `Development`.
+- **Rider:** *Run → Edit Configurations → GameInventoryAPI → Environment variables*, and set `ASPNETCORE_ENVIRONMENT=Development`.
+- **Either:** edit `Properties/launchSettings.json` and change `"Production"` to `"Development"`.
+
+Whichever you choose, don't commit that change, because the deployed app relies on Production.
 
 ---
 
@@ -276,7 +295,7 @@ VITE_ENDPOINT=http://localhost:5202/
 
 Then sign up in the app, click the link in the confirmation email, and log in.
 
-> Password-reset emails link to `http://localhost:5173/reset-password`. That address is currently hard-coded in `AuthController.cs`, so run the frontend on its default port.
+> Password-reset emails link to `FrontendBaseUrl` + `/reset-password`, and `FrontendBaseUrl` defaults to `http://localhost:5173`. If you run the frontend on a different port, set `FrontendBaseUrl` in `.env` to match.
 
 ---
 
@@ -284,7 +303,8 @@ Then sign up in the app, click the link in the confirmation email, and log in.
 
 | Problem | Fix |
 |---|---|
-| `DefaultConnection string is missing from configuration` | The API can't find your `.env`. Make sure the file is in `GameInventory/` (not the repo root), is named exactly `.env` (Windows can silently save it as `.env.txt`; turn on *View → File name extensions* in Explorer to check), and that you ran `dotnet run` from inside `GameInventory/`. |
+| `DefaultConnection string is missing from configuration` | Your `.env` wasn't loaded. **Most common cause:** `ASPNETCORE_ENVIRONMENT` wasn't set to `Development` in the terminal (or IDE run settings) before starting. See step 7. Also check that the file is in `GameInventory/` (not the repo root), that it's named exactly `.env` (Windows can silently save it as `.env.txt`; turn on *View → File name extensions* in Explorer to check), and that you ran `dotnet run` from inside `GameInventory/`. |
+| Swagger page shows 404 | You're in Production mode. Start the API with `ASPNETCORE_ENVIRONMENT=Development` (step 7). |
 | `JWT Secret/Issuer/Audience is missing` | One of the `JwtSettings__` lines is empty or misspelled in `.env`. |
 | `CORS_ORIGINS is missing or empty` | Add the `CORS_ORIGINS=` line from step 6. |
 | `A network-related or instance-specific error occurred…` / `Login failed for user 'sa'` | SQL Server isn't running or the connection string is wrong. **macOS:** check `docker ps`, then `docker start gameinventory-sql`. Make sure the password matches what you used in `docker run`. **Windows:** run `sqllocaldb info` to check the instance name. |
@@ -322,18 +342,73 @@ game-inventory-backend/
 └── GameInventory/
     ├── Controllers/
     │   ├── AuthController.cs     # register, confirm-email, login, forgot/reset password
+    │   ├── ExploreController.cs  # Explore page: popular games, categories, category rows
     │   ├── GamesController.cs    # the logged-in user's saved games, ratings, status
-    │   └── SearchController.cs   # IGDB game search
+    │   └── SearchController.cs   # IGDB game search (by name and/or genre)
     ├── DTOs/                     # request bodies
     ├── Migrations/               # EF Core migrations (applied automatically on startup)
     ├── Models/                   # database entities
-    ├── Services/                 # email + JWT token services
+    ├── Services/
+    │   ├── EmailService.cs       # SMTP email via MailKit
+    │   ├── TokenService.cs       # JWT generation
+    │   ├── IgdbRateLimiter.cs    # keeps IGDB calls under its rate limit
+    │   └── IgdbRateLimitingHandler.cs
     ├── AppDbContext.cs
+    ├── ApplicationUser.cs        # extended Identity user
     ├── Program.cs                # startup: config, auth, CORS, Swagger
     ├── appsettings.json          # non-secret defaults (secrets come from .env)
     ├── .env.example              # template for your .env
     └── GameInventory.csproj
 ```
+
+### API endpoints
+
+Browse and try them all at `/swagger` when running in Development.
+
+**Auth: `/api/auth`**
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/register` | No | Start registration (sends a confirmation email) |
+| GET | `/confirm-email?token=` | No | Finish registration after the email link is clicked |
+| POST | `/login` | No | Returns a JWT |
+| POST | `/forgot-password` | No | Sends a password-reset email |
+| GET | `/reset-password?token=&email=` | No | Redirects to the frontend's reset page |
+| POST | `/reset-password` | No | Sets the new password |
+
+**Games: `/api/games`** (every endpoint needs an `Authorization: Bearer <token>` header)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/list` | Add a game to your library |
+| GET | `/list` | Get all games in your library |
+| DELETE | `/list/{gameId}` | Remove a game from your library |
+| PUT | `/usergames/{id}/rating` | Update your rating for a game |
+| PUT | `/usergames/{id}/status` | Update your play status for a game |
+
+**Search: `/api/search`**
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `?query=zelda&genre=Action&page=1&pageSize=10` | No | Search IGDB by name, genre, or both (at least one is required) |
+| GET | `/by-id/{id}` | No | Get a single game by IGDB ID |
+
+**Explore: `/api/explore`**
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/popular?limit=10` | No | Games trending today |
+| GET | `/categories?page=1&pageSize=5` | No | Paged list of genres and themes |
+| GET | `/category?type=genre&id=12&limit=20` | No | Most popular games in one genre or theme |
+
+### Deploying
+
+The project includes a Web Deploy publish profile under `Properties/PublishProfiles/` for Azure App Service. In production:
+
+1. Set `ASPNETCORE_ENVIRONMENT=Production`. The `.env` file is then ignored on purpose.
+2. Provide every setting from `.env.example` as an **App Service application setting** (or via Azure Key Vault). Use the same names, including the `__` double underscores. Never commit secrets.
+3. Set `CORS_ORIGINS` to your deployed frontend's address(es), and `FrontendBaseUrl` to the deployed frontend's URL.
+4. Database migrations run automatically on startup.
 
 ### Changing the database schema
 
