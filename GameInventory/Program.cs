@@ -260,7 +260,7 @@ try
         ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor
     };
     // Trust the App Service reverse proxy (network list is unknown at build time).
-    forwardedOptions.KnownNetworks.Clear();
+    forwardedOptions.KnownIPNetworks.Clear(); // KnownNetworks is obsolete in .NET 10 (ASPDEPR005)
     forwardedOptions.KnownProxies.Clear();
     app.UseForwardedHeaders(forwardedOptions);
 
