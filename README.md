@@ -1,6 +1,6 @@
 # Game Inventory Backend
 
-The ASP.NET Core (.NET 9) Web API behind [Game Inventory](https://github.com/Tsaleem123/game-inventory-frontend). It handles user accounts (sign up with email confirmation, login, password reset), searches games through the [IGDB](https://www.igdb.com/) API, and stores each user's saved games, ratings and play status in SQL Server.
+The ASP.NET Core (.NET 10) Web API behind [Game Inventory](https://github.com/Tsaleem123/game-inventory-frontend). It handles user accounts (sign up with email confirmation, login, password reset), searches games through the [IGDB](https://www.igdb.com/) API, and stores each user's saved games, ratings and play status in SQL Server.
 
 This guide walks you through running it on your own computer, on **macOS** or **Windows**. Plan for about 30–45 minutes the first time, most of it spent installing tools and getting API keys.
 
@@ -25,7 +25,7 @@ This guide walks you through running it on your own computer, on **macOS** or **
 
 | Requirement | Why |
 |---|---|
-| **.NET 9 SDK** | Builds and runs the API |
+| **.NET 10 SDK** | Builds and runs the API |
 | **SQL Server** | Stores users and saved games. Windows can run it natively; macOS runs it in Docker |
 | **Git** | Clones the repository |
 | **A Twitch developer account** (free) | IGDB is owned by Twitch, and its API keys come from the Twitch developer console |
@@ -40,7 +40,7 @@ This guide walks you through running it on your own computer, on **macOS** or **
 ### macOS
 
 1. **Homebrew** (optional, but it makes the rest easier). Open **Terminal** and run the install command from [brew.sh](https://brew.sh).
-2. **.NET 9 SDK.** Either download the macOS installer from [dotnet.microsoft.com/download/dotnet/9.0](https://dotnet.microsoft.com/download/dotnet/9.0) (pick **Arm64** for Apple Silicon M1/M2/M3/M4, **x64** for Intel), or run:
+2. **.NET 10 SDK.** Either download the macOS installer from [dotnet.microsoft.com/download/dotnet/10.0](https://dotnet.microsoft.com/download/dotnet/10.0) (pick **Arm64** for Apple Silicon M1/M2/M3/M4, **x64** for Intel), or run:
    ```bash
    brew install --cask dotnet-sdk
    ```
@@ -50,14 +50,14 @@ This guide walks you through running it on your own computer, on **macOS** or **
 
 Check that .NET installed correctly:
 ```bash
-dotnet --version   # should print 9.x.x
+dotnet --version   # should print 10.x.x
 ```
 
 ### Windows
 
-1. **.NET 9 SDK.** Download the Windows **x64** installer from [dotnet.microsoft.com/download/dotnet/9.0](https://dotnet.microsoft.com/download/dotnet/9.0), or run this in **PowerShell**:
+1. **.NET 10 SDK.** Download the Windows **x64** installer from [dotnet.microsoft.com/download/dotnet/10.0](https://dotnet.microsoft.com/download/dotnet/10.0), or run this in **PowerShell**:
    ```powershell
-   winget install Microsoft.DotNet.SDK.9
+   winget install Microsoft.DotNet.SDK.10
    ```
 2. **SQL Server.** You have two options:
    - **SQL Server Express LocalDB** (simplest). It's installed with Visual Studio's *"ASP.NET and web development"* workload. To install it on its own, run the [SQL Server Express installer](https://www.microsoft.com/en-us/sql-server/sql-server-downloads), choose **Download Media**, then pick **LocalDB**.
@@ -67,7 +67,7 @@ dotnet --version   # should print 9.x.x
 
 **Close and reopen PowerShell** after installing so the new commands are picked up, then check:
 ```powershell
-dotnet --version   # should print 9.x.x
+dotnet --version   # should print 10.x.x
 ```
 
 ---
@@ -325,8 +325,8 @@ Then sign up in the app, click the link in the confirmation email, and log in.
 
 | Tool | Purpose |
 |---|---|
-| ASP.NET Core 9 | Web API |
-| Entity Framework Core 9 + SQL Server | Database access and migrations |
+| ASP.NET Core 10 | Web API |
+| Entity Framework Core 10 + SQL Server | Database access and migrations |
 | ASP.NET Core Identity | User accounts and passwords |
 | JWT Bearer authentication | Login tokens |
 | MailKit | Sending email |
