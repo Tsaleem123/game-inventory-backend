@@ -233,8 +233,10 @@ namespace GameInventory.Controllers
         [HttpGet("reset-password")]
         public IActionResult ResetPasswordRedirect(string token, string email)
         {
-            // TODO: Move frontend URL to configuration
-            var frontendBase = "http://localhost:5173";
+            // Frontend base URL comes from configuration so each environment
+            // (Development, Production, etc.) supplies its own value.
+            // Falls back to the local dev URL if nothing is configured.
+            var frontendBase = (_config["FrontendBaseUrl"] ?? "http://localhost:5173").TrimEnd('/');
 
             // Construct frontend URL with encoded parameters
             var url = $"{frontendBase}/reset-password?token={WebUtility.UrlEncode(token)}&email={WebUtility.UrlEncode(email)}";
